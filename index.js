@@ -11,7 +11,7 @@ const DIR = __dirname
 //
 // The controller is optional. Subsystems run without it; it exists to watch a whole room at once and to
 // step in when a team is stuck.
-async function main () {
+async function main() {
   const tui = Bare.argv.includes('--tui')
 
   if (tui) {
@@ -30,4 +30,7 @@ async function main () {
   console.log('[controller] room       ' + controller.roomSecret())
 }
 
-main().catch((e) => { console.error('[controller] fatal', e); Bare.exit(1) })
+main().catch((e) => {
+  console.error('[controller] fatal', e)
+  Bare.exit(1)
+})
