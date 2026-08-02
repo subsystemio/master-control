@@ -8,6 +8,7 @@ const b4a = require('b4a')
 //   mcp serve [--private-room]     run the daemon: dial the fleet, serve operators
 //   mcp [--host=<64-hex>]          operator console; defaults to the daemon on this machine
 //   mcp key                        print this MCP's public key (what goes on a card)
+//   mcp room                       print the room secret, if this fleet is private
 //
 // One daemon per installation, any number of consoles. Operators talk to the daemon, never to a
 // subsystem — that is what keeps a card's trust list to a single entry it never has to change.
@@ -20,11 +21,17 @@ function flag(name) {
   return hit && hit.slice(name.length + 3)
 }
 
-// A console on the same machine as the daemon needs no configuration at all.
-function localKey() {
-  const file = path.join(DIR, '.mcp-key')
+// A console on the same machine as the daemon needs no configuration at all. `subsystem-image`
+// reads both of these too, so a card gets its settings from the MCP itself rather than from
+// somebody's checkout path.
+function readKey(name) {
+  const file = path.join(DIR, name)
   if (!fs.existsSync(file)) return null
   return b4a.toString(fs.readFileSync(file), 'utf8').trim()
+}
+
+function localKey() {
+  return readKey('.mcp-key')
 }
 
 async function serve() {
@@ -63,6 +70,10 @@ async function main() {
   if (cmd === 'serve') return serve()
   if (cmd === 'key') {
     console.log(localKey() || 'no key yet — run `mcp serve` once')
+    return
+  }
+  if (cmd === 'room') {
+    console.log(readKey('.room-key') || 'no room secret — this fleet is public')
     return
   }
   return operatorConsole()
