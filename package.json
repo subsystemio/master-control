@@ -1,0 +1,23 @@
+{
+  "name": "master-controller",
+  "version": "0.1.0",
+  "description": "Operator console for a room of subsystems — watch them all, drive any of them, from manifests alone",
+  "main": "index.js",
+  "bin": { "master-controller": "index.js" },
+  "files": ["index.js", "lib"],
+  "scripts": {
+    "start": "bare index.js",
+    "tui": "bare index.js --tui"
+  },
+  "repository": { "type": "git", "url": "git+https://github.com/subsystemio/master-controller.git" },
+  "author": "subsystem.io",
+  "license": "MIT",
+  "dependencies": {
+    "b4a": "^1.8.1",
+    "bare-fs": "^4.7.2",
+    "bare-path": "^3.0.0",
+    "bare-tui": "^0.0.3",
+    "hyperswarm": "^4.17.0",
+    "subsystem": "github:subsystemio/subsystem-js"
+  }
+}
