@@ -36,8 +36,8 @@ Commands that declare `args` open a prompt. `↑↓` select · `1-9` run · `q` 
 First run mints an admin keypair and a room secret, then prints both:
 
 ```
-[controller] admin key  7e0e33db5ee9c4fc…
-[controller] room       cf3f3a12b13dec1a…
+[controller] admin key  <64 hex chars>
+[controller] room       <64 hex chars>
 ```
 
 Put those on each device (`room` and `admins` in its `config.txt`) and they find each other over
