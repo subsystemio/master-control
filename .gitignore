@@ -9,3 +9,4 @@ package-lock.json
 roster.txt
 *.log
 .DS_Store
+.env

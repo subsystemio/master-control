@@ -1,0 +1,31 @@
+#!/bin/sh
+# Refuse to commit secrets. A real room secret reached a public repo once via an integration test
+# that edited an example config; a history rewrite does not un-publish it. Rotation was the fix.
+#
+# Installed automatically by `npm install` (see the "prepare" script), because a hook under
+# .git/hooks is not tracked and not cloned — the guard has to travel with the repo.
+fail () { echo "pre-commit: $1"; echo "            Blank it before committing, or --no-verify if you are certain."; exit 1; }
+
+# A venue .env holds wifi keys and device logins. .env.example is fine.
+if git diff --cached --name-only --diff-filter=A | grep -qE "(^|/)\.env$"; then
+  fail "a .env is staged."
+fi
+
+# Key material should never be tracked anywhere.
+if git diff --cached --name-only --diff-filter=A | grep -qE "(^|/)(\.identity/|\.room$|\.room-key$|\.mcp-key$|seed$|roster\.txt$)"; then
+  fail "key material or a roster is staged."
+fi
+
+ADDED=$(git diff --cached -U0)
+
+# A populated room/admins line in a config.txt.
+if printf "%s" "$ADDED" | grep -qE "^\+[[:space:]]*(room|admins)[[:space:]]*=[[:space:]]*[0-9a-fA-F]{16,}"; then
+  fail "a room secret or admin key looks populated in a staged config."
+fi
+
+# .env-style assignments. Uppercase only, so a puzzle answer in a config.txt is not a false positive.
+if printf "%s" "$ADDED" | grep -qE "^\+(WIFI_KEY|PASSWORD|ROOM|MCP_SECRET)=[^[:space:]]+"; then
+  fail "a populated WIFI_KEY/PASSWORD/ROOM assignment is staged."
+fi
+
+exit 0

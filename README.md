@@ -9,11 +9,14 @@ The Master Control Program. One per installation: it dials every
 them.
 
 ```sh
-npm install -g bare        # the runtime everything here runs on
-npm install                # deps
-mcp serve                  # the daemon
-mcp                        # an operator console
+npm install -g bare                                 # the runtime everything here runs on
+npm install -g github:subsystemio/master-control    # puts `mcp` on your PATH
+mcp serve                                           # the daemon
+mcp                                                 # an operator console
 ```
+
+`subsystem-image` shells out to `mcp key` when writing a card, so having `mcp` on the `PATH` is what
+lets a card be configured without anyone naming a checkout path.
 
 Operators talk to the MCP, never to a subsystem. That single rule is what lets a card carry nothing
 but the MCP's public key and never be touched again — adding or removing an operator is one edit
@@ -85,6 +88,19 @@ subsystem 9be0b0f9…  front desk
 `.identity` is this MCP's keypair — lose it and every card needs reflashing, so it refuses to start
 rather than silently mint a new one. `.room` is the optional room secret, restored from its mirror
 if the file goes missing. Both are gitignored; back them up.
+
+They live in **`~/.master-control`**, deliberately not beside the code: installed globally the code
+sits in `node_modules`, and an upgrade there would delete the one thing whose loss orphans the
+entire fleet at once.
+
+```sh
+mcp key                                  # also prints the state directory when there is no key yet
+mcp serve --dir=/srv/mcp                 # or MCP_DIR=/srv/mcp
+```
+
+A checkout that already contains a `.identity` keeps using it, so an existing install is never moved
+out from under a live fleet. MCP cards written by `subsystem-image mcp` pass
+`--dir=/opt/subsystem/mcp` explicitly, because a systemd unit has no useful `HOME`.
 
 ## Running it
 

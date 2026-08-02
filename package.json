@@ -16,7 +16,8 @@
     "tui": "bare index.js --tui",
     "format": "prettier --write .",
     "lint": "prettier --check .",
-    "test": "brittle-bare test/all.js"
+    "test": "brittle-bare test/all.js",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "repository": {
     "type": "git",
@@ -27,7 +28,9 @@
   "dependencies": {
     "@subsystemio/runtime": "github:subsystemio/runtime",
     "b4a": "^1.8.1",
+    "bare-env": "^3.0.1",
     "bare-fs": "^4.7.2",
+    "bare-os": "^3.0.1",
     "bare-path": "^3.0.0",
     "bare-tui": "^0.0.3",
     "hyperswarm": "^4.17.0",
