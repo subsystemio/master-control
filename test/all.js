@@ -16,7 +16,14 @@ async function fleet(t, { privateRoom = false } = {}) {
   const bootstrap = testnet.bootstrap
   const root = path.join(os.tmpdir(), 'mcp-test-' + Math.floor(Date.now() + Math.random() * 1e6))
 
-  const mcp = new MCP({ dir: path.join(root, 'mcp'), bootstrap, privateRoom, onLog: () => {} })
+  // lockPort 0: several MCPs share this process, which the real singleton lock forbids
+  const mcp = new MCP({
+    dir: path.join(root, 'mcp'),
+    bootstrap,
+    privateRoom,
+    lockPort: 0,
+    onLog: () => {}
+  })
   fs.mkdirSync(path.join(root, 'mcp'), { recursive: true })
   await mcp.start()
 
