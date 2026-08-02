@@ -1,11 +1,23 @@
-# master-controller
+<p align="center">
+  <img src="docs/icon.png" alt="" width="150" />
+</p>
 
-The operator console for a room of [subsystems](https://github.com/subsystemio/subsystem-js). Watch
-them all, drive any of them — entirely from the manifests they publish about themselves.
+# master-control
 
+The Master Control Program. One per installation: it dials every
+[subsystem](https://github.com/subsystemio/runtime) in the fleet, and serves the operators who watch
+them.
+
+```sh
+npm install -g bare        # the runtime everything here runs on
+npm install                # deps
+mcp serve                  # the daemon
+mcp                        # an operator console
 ```
-npm install && npm run tui
-```
+
+Operators talk to the MCP, never to a subsystem. That single rule is what lets a card carry nothing
+but the MCP's public key and never be touched again — adding or removing an operator is one edit
+here, not a trip round twelve SD cards.
 
 ## It knows nothing about your subsystems
 
@@ -14,10 +26,10 @@ here, no plugins, no codegen. A new kind of device shows up with its controls al
 
 ```
 ┌─┤ S U B S Y S T E M S ├──────────────────────────────────────────┐
-│       ID            PROGRAM         VER     STATE                │
+│       ID            SUBSYSTEM       VER     STATE                │
 │ ▸ ◆   9be0b0f99858  tile-puzzle     1.0.0   ARMED · #14          │
 │   ◆ ✓ 4c1faa093311  door-lock       0.3.1   RETRACTED · ×91      │
-│   ◇   77a2be40f0c1  lamp            2.0.0   lit=true             │
+│   ? ▸ 77a2be40f0c1  lamp            2.0.0   pending — press A    │
 └──────────────────────────────────────────────────────────────────┘
 ┌─┤ C O M M A N D S ├──────────────────────────────────────────────┐
 │ ❰1❱ reset   ❰2❱ solve   ❰3❱ setImage·url                         │
@@ -31,29 +43,55 @@ never declared still shows as `name=value`.
 
 Commands that declare `args` open a prompt. `↑↓` select · `1-9` run · `q` quit.
 
-## Joining a room
+## Setting one up
 
-First run mints an admin keypair and a room secret, then prints both:
+First run mints this MCP's keypair and prints its public key:
 
 ```
-[controller] admin key  <64 hex chars>
-[controller] room       <64 hex chars>
+[mcp] key 7e0e33db5ee9c4fc…
+[mcp] put that on a card as `mcp = …` in its config.txt
 ```
 
-Put those on each device (`room` and `admins` in its `config.txt`) and they find each other over
-Hyperswarm — no addresses, no port forwarding, no same-LAN requirement.
+That key goes on every card, once. It is **public** — losing a card leaks nothing, and cards never
+need touching again.
 
-- **`room`** is the shared secret. It finds the room and proves membership. Holding it is enough to
-  **watch**.
-- **`admins`** are public keys. Only those may **command**. Your private key never leaves this
-  machine, and the Noise handshake proves it.
+```sh
+mcp serve --private-room     # also mint a room secret, so the fleet cannot even be found
+mcp key                      # print the key again
+mcp --host=<64-hex>          # a console for an MCP on another machine
+```
 
-So a second operator can check in on a whole room with the room secret alone and touch nothing until
-you add their key. Run as many consoles as you like — each dials the subsystems independently, so
-there is no primary and nothing to diverge.
+## Adding and removing operators
 
-`.identity`, `.room` and the mirrored key files are gitignored. Keep them; losing `.identity` means
-minting a new admin key and updating every device.
+Everyone is a peer with a keypair; the MCP's `roster.txt` decides what that buys.
+
+- The **first** operator to connect to an empty roster becomes admin, so there is always a way in.
+- Anyone else arrives as **pending**: they see the whole fleet live, and can command nothing.
+- An admin adopts them, or edits `roster.txt` by hand. Revoking is deleting a line — immediate, with
+  nothing to reflash.
+
+Subsystems work the same way. A new one shows as `?` and its reported state is displayed but never
+trusted until an admin presses **A**. That is what stops anyone who can reach the MCP from inventing
+a device.
+
+```
+operator  7e0e33db…  alice
+operator  3f10ba22…  bob (evenings)
+subsystem 9be0b0f9…  front desk
+```
+
+## Keep these
+
+`.identity` is this MCP's keypair — lose it and every card needs reflashing, so it refuses to start
+rather than silently mint a new one. `.room` is the optional room secret, restored from its mirror
+if the file goes missing. Both are gitignored; back them up.
+
+## Running it
+
+```sh
+npm test        # real peers on a local DHT testnet
+npm run lint
+```
 
 ## License
 

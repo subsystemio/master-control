@@ -1,8 +1,11 @@
 node_modules/
 package-lock.json
 .identity/
+.operator/
 .room
 .room-key
+.mcp-key
 .controller-key
+roster.txt
 *.log
 .DS_Store

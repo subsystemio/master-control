@@ -1,10 +1,11 @@
 {
-  "name": "master-controller",
-  "version": "0.1.0",
+  "name": "master-control",
+  "version": "0.2.0",
   "description": "Operator console for a room of subsystems — watch them all, drive any of them, from manifests alone",
   "main": "index.js",
   "bin": {
-    "master-controller": "index.js"
+    "mcp": "index.js",
+    "master-control": "index.js"
   },
   "files": [
     "index.js",
@@ -14,23 +15,27 @@
     "start": "bare index.js",
     "tui": "bare index.js --tui",
     "format": "prettier --write .",
-    "lint": "prettier --check ."
+    "lint": "prettier --check .",
+    "test": "brittle-bare test/all.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/subsystemio/master-controller.git"
+    "url": "git+https://github.com/subsystemio/master-control.git"
   },
   "author": "subsystem.io",
   "license": "MIT",
   "dependencies": {
+    "@subsystemio/runtime": "github:subsystemio/runtime",
     "b4a": "^1.8.1",
     "bare-fs": "^4.7.2",
     "bare-path": "^3.0.0",
     "bare-tui": "^0.0.3",
     "hyperswarm": "^4.17.0",
-    "subsystem": "github:subsystemio/subsystem-js"
+    "protomux": "^3.11.0"
   },
   "devDependencies": {
+    "brittle": "^4.1.0",
+    "hyperdht": "^6.32.0",
     "prettier": "^3.6.2",
     "prettier-config-holepunch": "^2.0.0"
   }

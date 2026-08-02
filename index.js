@@ -1,36 +1,74 @@
 #!/usr/bin/env bare
 const path = require('bare-path')
-const { Controller } = require('./lib/core.js')
+const fs = require('bare-fs')
+const b4a = require('b4a')
 
-const DIR = __dirname
-
-// Usage:
-//   bare controller/index.js [--tui]
-//   --tui      operator console (interactive; needs a real terminal)
-//   default    headless: logs to stdout
+// Master Control Program.
 //
-// The controller is optional. Subsystems run without it; it exists to watch a whole room at once and to
-// step in when a team is stuck.
-async function main() {
-  const tui = Bare.argv.includes('--tui')
+//   mcp serve [--private-room]     run the daemon: dial the fleet, serve operators
+//   mcp [--host=<64-hex>]          operator console; defaults to the daemon on this machine
+//   mcp key                        print this MCP's public key (what goes on a card)
+//
+// One daemon per installation, any number of consoles. Operators talk to the daemon, never to a
+// subsystem — that is what keeps a card's trust list to a single entry it never has to change.
+const DIR = __dirname
+const argv = Bare.argv.slice(2)
+const cmd = argv.find((a) => !a.startsWith('-')) || 'console'
 
-  if (tui) {
-    const { Program } = require('bare-tui')
-    const { ConsoleModel } = require('./lib/tui.js')
-    const controller = new Controller({ dir: DIR, onLog: () => {} })
-    await controller.start()
-    await new Program(new ConsoleModel(controller)).run()
+function flag(name) {
+  const hit = argv.find((a) => a.startsWith('--' + name + '='))
+  return hit && hit.slice(name.length + 3)
+}
+
+// A console on the same machine as the daemon needs no configuration at all.
+function localKey() {
+  const file = path.join(DIR, '.mcp-key')
+  if (!fs.existsSync(file)) return null
+  return b4a.toString(fs.readFileSync(file), 'utf8').trim()
+}
+
+async function serve() {
+  const { MCP } = require('./lib/mcp.js')
+  const mcp = new MCP({
+    dir: DIR,
+    privateRoom: argv.includes('--private-room'),
+    onLog: (l) => console.log('[mcp]', l)
+  })
+  await mcp.start()
+  console.log('[mcp] key ' + mcp.pubkey)
+  console.log('[mcp] put that on a card as `mcp = …` in its config.txt')
+}
+
+async function operatorConsole() {
+  const host = flag('host') || localKey()
+  if (!host) {
+    console.log('no mcp to connect to.')
+    console.log('  start one here:  mcp serve')
+    console.log('  or point at one: mcp --host=<64-hex>')
+    Bare.exit(1)
     return
   }
 
-  const controller = new Controller({ dir: DIR, onLog: (l) => console.log('[controller]', l) })
-  await controller.start()
-  // What an operator needs to provision a card: who may command, and which room.
-  console.log('[controller] admin key  ' + controller.pubkey)
-  console.log('[controller] room       ' + controller.roomSecret())
+  const { Client } = require('./lib/client.js')
+  const { Program } = require('bare-tui')
+  const { ConsoleModel } = require('./lib/tui.js')
+
+  const client = new Client({ dir: path.join(DIR, '.operator'), mcpKey: host, onLog: () => {} })
+  await client.start()
+  await new Program(new ConsoleModel(client)).run()
+  await client.close()
+}
+
+async function main() {
+  if (cmd === 'serve') return serve()
+  if (cmd === 'key') {
+    console.log(localKey() || 'no key yet — run `mcp serve` once')
+    return
+  }
+  return operatorConsole()
 }
 
 main().catch((e) => {
-  console.error('[controller] fatal', e)
+  console.error('[mcp] fatal', e)
   Bare.exit(1)
 })

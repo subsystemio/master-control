@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="b" />
+      <feMerge>
+        <feMergeNode in="b" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+    <filter id="softglow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="14" result="b" />
+      <feMerge>
+        <feMergeNode in="b" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" fill="#050a0f" />
+
+  <!-- the grid the subsystem mark sits on -->
+  <g stroke="#123b47" stroke-width="1.5" opacity="0.55">
+    <path d="M170 0V1024M341 0V1024M512 0V1024M683 0V1024M854 0V1024" />
+    <path d="M0 170H1024M0 341H1024M0 512H1024M0 683H1024M0 854H1024" />
+  </g>
+
+  <!-- circuit traces, cyan like the subsystem mark -->
+  <g stroke="#22d3ee" stroke-width="3" fill="none" opacity="0.85" stroke-linecap="round">
+    <path d="M355 292V385H492" />
+    <path d="M196 428H400V468" />
+    <path d="M556 596V724H705V632H830" />
+  </g>
+  <g fill="#22d3ee" opacity="0.95">
+    <circle cx="355" cy="385" r="8" />
+    <circle cx="400" cy="428" r="8" />
+    <circle cx="705" cy="632" r="8" />
+  </g>
+
+  <!-- inner hexagon -->
+  <path
+    d="M512 222 L 763 367 L 763 657 L 512 802 L 261 657 L 261 367 Z"
+    fill="none"
+    stroke="#1a6b7d"
+    stroke-width="3"
+    opacity="0.75"
+  />
+
+  <!-- outer hexagon -->
+  <path
+    d="M512 146 L 829 329 L 829 695 L 512 878 L 195 695 L 195 329 Z"
+    fill="none"
+    stroke="#22d3ee"
+    stroke-width="10"
+    stroke-linejoin="round"
+    filter="url(#glow)"
+  />
+
+  <!-- the MCP ring: what marks this as the controller rather than a subsystem -->
+  <circle
+    cx="512"
+    cy="512"
+    r="208"
+    fill="none"
+    stroke="#f59e0b"
+    stroke-width="3"
+    opacity="0.38"
+    stroke-dasharray="16 12"
+  />
+  <g fill="#f59e0b" filter="url(#softglow)">
+    <circle cx="512" cy="304" r="9" />
+    <circle cx="512" cy="720" r="9" />
+  </g>
+
+  <!-- M C P, stroked like the SU mark: thin, round terminals -->
+  <g
+    fill="none"
+    stroke="#67e8f9"
+    stroke-width="15"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    filter="url(#glow)"
+  >
+    <path d="M362 564 V 460 L 406 522 L 450 460 V 564" />
+    <path d="M570 479 A 52 52 0 1 0 570 545" />
+    <path d="M610 564 V 460 H 636 A 26 26 0 0 1 636 512 H 610" />
+  </g>
+</svg>
