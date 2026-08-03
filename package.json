@@ -34,6 +34,7 @@
     "bare-path": "^3.0.0",
     "bare-tui": "^0.0.3",
     "hyperswarm": "^4.17.0",
+    "paparam": "^1.10.2",
     "protomux": "^3.11.0"
   },
   "devDependencies": {

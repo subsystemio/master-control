@@ -11,8 +11,18 @@ them.
 ```sh
 npm install -g bare                                 # the runtime everything here runs on
 npm install -g github:subsystemio/master-control    # puts `mcp` on your PATH
-mcp serve                                           # the daemon
-mcp                                                 # an operator console
+mcp                                                 # console — and the daemon, if none is running
+```
+
+That is usually the whole setup. `mcp` opens the console and **hosts the fleet itself** when nothing
+else on the machine already is, so subsystems connect to you and other operators can attach over the
+swarm. The loopback lock on 9599 decides which process is the daemon, so a second `mcp` attaches
+instead of splitting the fleet in two.
+
+```sh
+mcp serve            # headless daemon only — what a systemd unit runs
+mcp install          # keep it up across reboots (optional; see below)
+mcp --host=<64-hex>  # attach to an MCP on another machine
 ```
 
 `subsystem-image` shells out to `mcp key` when writing a card, so having `mcp` on the `PATH` is what
@@ -59,7 +69,7 @@ That key goes on every card, once. It is **public** — losing a card leaks noth
 need touching again.
 
 ```sh
-mcp serve --private-room     # also mint a room secret, so the fleet cannot even be found
+mcp --private-room           # also mint a room secret, so the fleet cannot even be found
 mcp key                      # print the key again
 mcp --host=<64-hex>          # a console for an MCP on another machine
 ```
@@ -95,12 +105,33 @@ entire fleet at once.
 
 ```sh
 mcp key                                  # also prints the state directory when there is no key yet
-mcp serve --dir=/srv/mcp                 # or MCP_DIR=/srv/mcp
+mcp --dir=/srv/mcp                       # or MCP_DIR=/srv/mcp
 ```
 
-A checkout that already contains a `.identity` keeps using it, so an existing install is never moved
-out from under a live fleet. MCP cards written by `subsystem-image mcp` pass
+A directory that already contains a `.mcp-key` keeps being used, so an existing install is never
+moved out from under a live fleet. That check is deliberately on the **public mirror** and not on
+`.identity`: if the private key is the file that went missing, this directory must still win, so the
+"restore it or explicitly accept a new key" guard is what you hit — rather than silently getting a
+new fleet somewhere else. MCP cards written by `subsystem-image mcp` pass
 `--dir=/opt/subsystem/mcp` explicitly, because a systemd unit has no useful `HOME`.
+
+## Always-on, if you want it
+
+Mostly you don't need this: `mcp` hosts the fleet for as long as the console is open, which covers a
+session at a venue. Install a unit when a box should simply always be the MCP.
+
+```sh
+mcp install       # a user unit — runs as you, no sudo, uses ~/.master-control
+mcp install --system   # a system unit instead (needs sudo)
+mcp uninstall
+```
+
+The user unit is the default because it shares the same state directory the console uses, so `mcp
+key` and the daemon can never disagree about which fleet this is. It enables lingering, or the unit
+would die at logout and never come back on a headless box. `uninstall` removes the unit and leaves
+the identity alone.
+
+Linux only — everywhere else, just run `mcp`.
 
 ## Running it
 
