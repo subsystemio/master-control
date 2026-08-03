@@ -16,15 +16,6 @@ const { command, flag, summary, description, header, footer, bail } = require('p
 function resolveDir(explicit) {
   if (explicit) return path.resolve(explicit)
   if (env.MCP_DIR) return path.resolve(env.MCP_DIR)
-  // A checkout that already holds state keeps using it, so an existing install is never moved out
-  // from under a live fleet.
-  //
-  // Keyed on .mcp-key — the public mirror — and NOT on .identity. If .identity is the thing that
-  // went missing, this directory must still win, so that start()'s "refuse rather than mint" guard
-  // is the code that speaks. Keying on .identity meant a lost private key silently relocated the
-  // whole MCP to a fresh directory and minted a new fleet, which is the one failure this project
-  // exists to prevent. It cost a real identity here before anyone had shipped a card.
-  if (fs.existsSync(path.join(__dirname, '.mcp-key'))) return __dirname
   return path.join(os.homedir(), '.master-control')
 }
 

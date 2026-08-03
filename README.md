@@ -108,12 +108,10 @@ mcp key                                  # also prints the state directory when 
 mcp --dir=/srv/mcp                       # or MCP_DIR=/srv/mcp
 ```
 
-A directory that already contains a `.mcp-key` keeps being used, so an existing install is never
-moved out from under a live fleet. That check is deliberately on the **public mirror** and not on
-`.identity`: if the private key is the file that went missing, this directory must still win, so the
-"restore it or explicitly accept a new key" guard is what you hit — rather than silently getting a
-new fleet somewhere else. MCP cards written by `subsystem-image mcp` pass
-`--dir=/opt/subsystem/mcp` explicitly, because a systemd unit has no useful `HOME`.
+One place, no searching. If `.identity` goes missing while `.mcp-key` is still there, the daemon
+refuses to start rather than minting a replacement — restore it, or delete `.mcp-key` to say
+explicitly that you want a new fleet. MCP cards written by `subsystem-image mcp` pass
+`--dir=/opt/subsystem/mcp`, because a systemd unit has no useful `HOME`.
 
 ## Always-on, if you want it
 
