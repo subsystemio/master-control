@@ -29,7 +29,7 @@ mcp --host=<64-hex>  # attach to an MCP on another machine
 lets a card be configured without anyone naming a checkout path.
 
 Operators talk to the MCP, never to a subsystem. That single rule is what lets a card carry nothing
-but the MCP's public key and never be touched again — adding or removing an operator is one edit
+but the fleet's identity key and never be touched again — adding or removing an operator is one edit
 here, not a trip round twelve SD cards.
 
 ## It knows nothing about your subsystems
@@ -58,21 +58,46 @@ Commands that declare `args` open a prompt. `↑↓` select · `1-9` run · `q` 
 
 ## Setting one up
 
-First run mints this MCP's keypair and prints its public key:
+A fleet is a **root identity**, not a machine. Cards carry the identity's public key; this box proves
+it belongs to that identity. That indirection is the point: the box can be replaced without touching
+a single card.
 
-```
-[mcp] key 7e0e33db5ee9c4fc…
-[mcp] put that on a card as `mcp = …` in its config.txt
+The identity's mnemonic never comes near this box. Mint it on a machine that is offline, and keep the
+words the way you would keep a master key to the building.
+
+```sh
+mcp identity                 # OFFLINE: prints 24 words once, and the identity key
 ```
 
-That key goes on every card, once. It is **public** — losing a card leaks nothing, and cards never
-need touching again.
+Then attest this box into the fleet:
+
+```sh
+mcp device                   # on the MCP box: its own key
+mcp attest <that key> --words=words.txt   # OFFLINE: prints a proof
+mcp proof <that proof>       # on the MCP box: install it
+mcp key                      # the identity key — this is what goes on every card
+```
+
+Only the proof travels back, and a proof grants nothing on its own. Until one is installed the daemon
+runs but **no prop will accept a command from it**, and it says so on every start.
 
 ```sh
 mcp --private-room           # also mint a room secret, so the fleet cannot even be found
-mcp key                      # print the key again
 mcp --host=<64-hex>          # a console for an MCP on another machine
 ```
+
+### Replacing the box
+
+Attest the new one from the same words and the fleet moves. No card is reflashed, no prop is
+re-adopted.
+
+Re-attesting also **revokes**: proofs carry an epoch, and a prop that has seen a newer one stops
+accepting older ones. So a stolen box's key can be retired — which was impossible when the card
+trusted one key directly. Props learn the newer epoch on their next connection; you can also drop it
+on the boot partition by hand if you do not want to wait.
+
+The trade is worth stating plainly: the mnemonic is now the thing that must never leak. A stolen box
+can be revoked; a stolen mnemonic cannot, short of reflashing every card.
 
 ## Adding and removing operators
 
@@ -95,22 +120,24 @@ subsystem 9be0b0f9…  front desk
 
 ## Keep these
 
-`.identity` is this MCP's keypair — lose it and every card needs reflashing, so it refuses to start
-rather than silently mint a new one. `.room` is the optional room secret, restored from its mirror
-if the file goes missing. Both are gitignored; back them up.
+`.identity` is this box's own keypair and `.proof` is its attestation — lose either and you re-attest
+this box from the words, which is cheap. `.room` is the optional room secret, restored from its mirror
+if the file goes missing.
+
+The one irreplaceable thing is the **mnemonic**, and it is deliberately not here. Nothing in this
+directory can mint an attestation.
 
 They live in **`~/.master-control`**, deliberately not beside the code: installed globally the code
-sits in `node_modules`, and an upgrade there would delete the one thing whose loss orphans the
-entire fleet at once.
+sits in `node_modules`, and an upgrade there would wipe the directory out from under a running fleet.
 
 ```sh
 mcp key                                  # also prints the state directory when there is no key yet
 mcp --dir=/srv/mcp                       # or MCP_DIR=/srv/mcp
 ```
 
-One place, no searching. If `.identity` goes missing while `.mcp-key` is still there, the daemon
-refuses to start rather than minting a replacement — restore it, or delete `.mcp-key` to say
-explicitly that you want a new fleet. MCP cards written by `subsystem-image mcp` pass
+One place, no searching. If `.identity` goes missing while `.mcp-key` is still there the daemon
+refuses to start rather than minting a replacement, because the installed `.proof` would no longer
+match — restore it, or delete both and re-attest. MCP cards written by `subsystem-image mcp` pass
 `--dir=/opt/subsystem/mcp`, because a systemd unit has no useful `HOME`.
 
 ## Always-on, if you want it

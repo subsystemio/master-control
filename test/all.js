@@ -4,27 +4,38 @@ const fs = require('bare-fs')
 const path = require('bare-path')
 const os = require('bare-os')
 const b4a = require('b4a')
-const { UIHost, IPC, Link, room } = require('@subsystemio/runtime')
+const { UIHost, IPC, Link, room, identity, attest } = require('@subsystemio/runtime')
 const { roomKey } = room
+const { loadOrCreateKeyPair } = identity
 const { MCP } = require('../lib/mcp.js')
 const { Client } = require('../lib/client.js')
 const { Roster } = require('../lib/roster.js')
 
 // Real peers on a local DHT — no mocks, and no waiting on the public network.
-async function fleet(t, { privateRoom = false } = {}) {
+async function fleet(t, { privateRoom = false, attested = true } = {}) {
   const testnet = await createTestnet(3, { teardown: t.teardown })
   const bootstrap = testnet.bootstrap
   const root = path.join(os.tmpdir(), 'mcp-test-' + Math.floor(Date.now() + Math.random() * 1e6))
 
+  // The real flow, compressed: the box mints a device key, an offline identity attests it, and the
+  // daemon starts with that proof in place. Without one, no subsystem will attach to it.
+  const mcpDir = path.join(root, 'mcp')
+  fs.mkdirSync(mcpDir, { recursive: true })
+  const mnemonic = attest.generateMnemonic()
+  const identityKey = await attest.identityKeyOf(mnemonic)
+  const device = loadOrCreateKeyPair(path.join(mcpDir, '.identity'))
+  if (attested) {
+    fs.writeFileSync(path.join(mcpDir, '.proof'), await attest.attest(mnemonic, device.publicKey))
+  }
+
   // lockPort 0: several MCPs share this process, which the real singleton lock forbids
   const mcp = new MCP({
-    dir: path.join(root, 'mcp'),
+    dir: mcpDir,
     bootstrap,
     privateRoom,
     lockPort: 0,
     onLog: () => {}
   })
-  fs.mkdirSync(path.join(root, 'mcp'), { recursive: true })
   await mcp.start()
 
   const made = []
@@ -35,9 +46,12 @@ async function fleet(t, { privateRoom = false } = {}) {
     const ipc = new IPC(ui, { log: () => {} })
     await app(ipc, () => {})
     const link = new Link(ipc, {
-      mcpKey: mcp.pubkey,
+      // An unattested MCP has no identity, so it falls back to its own key for the topic. Point the
+      // subsystem at whatever the MCP is actually announcing on, so the negative test can meet it.
+      identityKey: 'identityKey' in opts ? opts.identityKey : attested ? identityKey : mcp.pubkey,
       roomKey: 'roomKey' in opts ? opts.roomKey : mcp.roomKey,
       storeDir: path.join(dir, '.identity'),
+      receiptFile: path.join(dir, '.receipt'),
       bootstrap,
       log: () => {}
     })
@@ -63,7 +77,7 @@ async function fleet(t, { privateRoom = false } = {}) {
     } catch {}
   })
 
-  return { mcp, addSubsystem, addOperator }
+  return { mcp, identityKey, mnemonic, device, addSubsystem, addOperator }
 }
 
 const until = async (fn, ms = 20000) => {
@@ -200,4 +214,33 @@ test('the roster round-trips through disk', async function (t) {
 
   reloaded.revoke(key)
   t.absent(new Roster(file).has(key), 'revoking survives a reload')
+})
+
+// The wiring, not the crypto: a prop that meets an MCP on the right topic but gets no valid
+// attestation must stay silent. This is the case that matters in a venue — an MCP whose proof was
+// never imported looks fine from the outside and must still command nothing.
+test('an unattested mcp never gets a subsystem to attach', async function (t) {
+  const { mcp, addSubsystem } = await fleet(t, { attested: false })
+
+  const { link } = await addSubsystem(async (ipc) => {
+    ipc.describe({
+      id: 'lamp',
+      version: '1.0.0',
+      commands: [{ name: 'on' }],
+      events: [],
+      state: []
+    })
+    ipc.onCommand(() => 'lit')
+  })
+
+  t.absent(mcp.identityKey, 'the mcp has no identity without a proof')
+
+  // Give discovery a generous window: the point is that nothing attaches, so we must be sure we
+  // waited long enough for it to have happened.
+  await new Promise((resolve) => setTimeout(resolve, 6000))
+
+  t.absent(link.mcp, 'the subsystem never attached')
+  const rec = mcp.subsystems.get(link.identity())
+  if (rec) t.absent(rec.appId, 'and disclosed no manifest')
+  else t.pass('the mcp saw no subsystem at all')
 })

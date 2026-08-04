@@ -4,7 +4,8 @@ const fs = require('bare-fs')
 const os = require('bare-os')
 const env = require('bare-env')
 const b4a = require('b4a')
-const { command, flag, summary, description, header, footer, bail } = require('paparam')
+const { command, flag, arg, summary, description, header, footer, bail } = require('paparam')
+const attest = require('@subsystemio/runtime').attest
 
 // Master Control Program. One daemon per installation, any number of consoles. Operators talk to
 // the daemon, never to a subsystem — that is what keeps a card's trust list to a single entry it
@@ -95,18 +96,120 @@ const serve = command(
     })
     await mcp.start()
     console.log('[mcp] state ' + dir)
-    console.log('[mcp] key ' + mcp.pubkey)
-    console.log('[mcp] put that on a card as `mcp = …` in its config.txt')
+    console.log('[mcp] device ' + mcp.pubkey)
+    if (mcp.identityKey) {
+      console.log('[mcp] identity ' + b4a.toString(mcp.identityKey, 'hex'))
+      console.log('[mcp] put the identity on a card as `mcp = …` in its config.txt')
+    }
   }
 )
 
+// What goes on a card: the ROOT identity, not this box's key. That indirection is the point — the
+// box can be replaced and the cards never change.
 const key = command(
   'key',
-  summary("print this MCP's public key — what goes on every card"),
-  flag('--dir [path]', 'where the identity lives'),
+  summary('print the fleet identity key — what goes on every card'),
+  flag('--dir [path]', 'where the state lives'),
+  (cmd) => {
+    const dir = resolveDir(cmd.flags.dir)
+    // Derived from the proof, not read from a mirror: one source of truth, and it is correct the
+    // moment a proof is imported rather than after the next start.
+    const file = path.join(dir, '.proof')
+    if (fs.existsSync(file)) {
+      const id = attest.identityOf(fs.readFileSync(file))
+      if (id) return console.log(b4a.toString(id, 'hex'))
+    }
+    console.log('not attested yet — no identity key (state: ' + dir + ')')
+    console.log('  mcp identity          # once, on an offline machine: mint the fleet identity')
+    console.log("  mcp device            # this box's key, which you attest")
+    console.log('  mcp attest <key>      # offline, with the words')
+    console.log('  mcp proof <hex>       # import the result here')
+  }
+)
+
+const device = command(
+  'device',
+  summary("print this box's own key — the one you attest"),
+  flag('--dir [path]', 'where the state lives'),
   (cmd) => {
     const dir = resolveDir(cmd.flags.dir)
     console.log(readKey(dir, '.mcp-key') || 'no key yet — run `mcp` once (state: ' + dir + ')')
+  }
+)
+
+// The root secret never touches this machine. These two run on an offline box; only the resulting
+// proof — which grants nothing on its own — comes back.
+const identityCmd = command(
+  'identity',
+  summary('mint a new fleet identity (offline machine only)'),
+  description(
+    'Prints 24 words ONCE. They are the fleet: whoever has them can attest any box, forever, and\n' +
+      'no card can be told otherwise without reflashing. Write them down, store them offline, and\n' +
+      'do not put them on the MCP box.'
+  ),
+  async () => {
+    const mnemonic = attest.generateMnemonic()
+    const identityKey = await attest.identityKeyOf(mnemonic)
+    console.log('')
+    console.log('  ' + mnemonic)
+    console.log('')
+    console.log('identity key: ' + b4a.toString(identityKey, 'hex'))
+    console.log('')
+    console.log('That key goes on every card. The words go nowhere near this fleet.')
+  }
+)
+
+const attestCmd = command(
+  'attest',
+  summary('attest a box into the fleet (offline machine only)'),
+  description(
+    'Reads the words from --words=<file>, or from stdin. Prints a proof to import with `mcp proof`.'
+  ),
+  arg('<key>', "the box's device key, from `mcp device`"),
+  flag('--words [file]', 'file holding the mnemonic; omit to read stdin'),
+  async (cmd) => {
+    const deviceKey = cmd.args.key.trim()
+    if (!/^[0-9a-f]{64}$/i.test(deviceKey)) throw new Error('a device key is 64 hex characters')
+
+    const src = cmd.flags.words || '/dev/stdin'
+    const mnemonic = b4a.toString(fs.readFileSync(src), 'utf8').trim()
+    if (!mnemonic) throw new Error('no mnemonic given — pass --words=<file> or pipe it in')
+
+    const proof = await attest.attest(mnemonic, b4a.from(deviceKey, 'hex'))
+    console.log(b4a.toString(proof, 'hex'))
+  }
+)
+
+const proofCmd = command(
+  'proof',
+  summary("import this box's attestation, or print the current one"),
+  arg('[hex]', 'the proof from `mcp attest`; omit to print what is installed'),
+  flag('--dir [path]', 'where the state lives'),
+  (cmd) => {
+    const dir = resolveDir(cmd.flags.dir)
+    const file = path.join(dir, '.proof')
+    if (!cmd.args.hex) {
+      if (!fs.existsSync(file)) return console.log('no proof installed (state: ' + dir + ')')
+      return console.log(b4a.toString(fs.readFileSync(file), 'hex'))
+    }
+
+    const proof = b4a.from(cmd.args.hex.trim(), 'hex')
+    const mine = readKey(dir, '.mcp-key')
+    const attested = attest.deviceOf(proof)
+    if (!attested) throw new Error('that is not a readable proof')
+    // Refuse a proof for another box here, rather than letting every prop reject us silently.
+    if (mine && b4a.toString(attested, 'hex') !== mine) {
+      throw new Error(
+        'that proof attests ' +
+          b4a.toString(attested, 'hex').slice(0, 12) +
+          '… but this box is ' +
+          mine.slice(0, 12) +
+          '…'
+      )
+    }
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(file, proof)
+    console.log('installed — identity ' + b4a.toString(attest.identityOf(proof), 'hex'))
   }
 )
 
@@ -173,6 +276,10 @@ const mcp = command(
   footer('one daemon per installation — the loopback lock on 9599 decides which process it is'),
   serve,
   key,
+  device,
+  identityCmd,
+  attestCmd,
+  proofCmd,
   room,
   install,
   uninstall,
