@@ -20,6 +20,15 @@ function resolveDir(explicit) {
   return path.join(os.homedir(), '.master-control')
 }
 
+function readProof(dir) {
+  const file = path.join(dir, '.proof')
+  try {
+    return fs.readFileSync(file)
+  } catch {
+    return null
+  }
+}
+
 function readKey(dir, name) {
   const file = path.join(dir, name)
   if (!fs.existsSync(file)) return null
@@ -250,6 +259,110 @@ const uninstall = command(
   (cmd) => require('./lib/systemd.js').uninstall({ user: !cmd.flags.system })
 )
 
+// An operator is an identity, so a person can hold several machines under one roster line. The
+// common case — one person, one laptop — needs no ceremony: the console mints an identity on first
+// run and saves the words. This is only for the second machine.
+const login = command(
+  'login',
+  summary('join this machine to an operator identity'),
+  description(
+    'With --words, attests this machine to an existing operator identity, so the MCP already knows\n' +
+      'it and no roster edit is needed. Without, reports the identity this machine already has.\n' +
+      'The console mints one automatically on first run.'
+  ),
+  flag('--words [file]', "file holding the operator identity's mnemonic"),
+  flag('--dir [path]', 'where the state lives'),
+  async (cmd) => {
+    const opDir = path.join(resolveDir(cmd.flags.dir), '.operator')
+    const kp = require('@subsystemio/runtime').identity.loadOrCreateKeyPair(
+      path.join(opDir, '.identity')
+    )
+
+    if (!cmd.flags.words) {
+      const current = readProof(opDir)
+      if (!current) {
+        console.log('no operator identity yet — run `mcp` once, or pass --words=<file>')
+        return
+      }
+      console.log('identity ' + b4a.toString(attest.identityOf(current), 'hex'))
+      console.log('machine  ' + b4a.toString(kp.publicKey, 'hex'))
+      return
+    }
+
+    const mnemonic = b4a.toString(fs.readFileSync(cmd.flags.words), 'utf8').trim()
+    if (!mnemonic) throw new Error('that file holds no mnemonic')
+    const proof = await attest.attest(mnemonic, kp.publicKey)
+    fs.mkdirSync(opDir, { recursive: true })
+    fs.writeFileSync(path.join(opDir, '.proof'), proof)
+    console.log('joined identity ' + b4a.toString(attest.identityOf(proof), 'hex'))
+    console.log('this machine needs no roster entry of its own')
+  }
+)
+
+const whoami = command(
+  'whoami',
+  summary('print this machine operator identity and device key'),
+  flag('--dir [path]', 'where the state lives'),
+  (cmd) => {
+    const opDir = path.join(resolveDir(cmd.flags.dir), '.operator')
+    const proof = readProof(opDir)
+    if (!proof) return console.log('no operator identity yet — run `mcp` once')
+    console.log('identity ' + b4a.toString(attest.identityOf(proof), 'hex'))
+    console.log('machine  ' + b4a.toString(attest.deviceOf(proof), 'hex'))
+  }
+)
+
+// Managing who may drive the fleet, without opening the console. These write roster.txt, which the
+// daemon re-reads on every admission, so a change takes effect on the next connection.
+const roster = command(
+  'roster',
+  summary('list who this fleet trusts'),
+  flag('--dir [path]', 'where the state lives'),
+  (cmd) => {
+    const { Roster } = require('./lib/roster.js')
+    const file = path.join(resolveDir(cmd.flags.dir), 'roster.txt')
+    const entries = [...new Roster(file).entries.values()]
+    if (!entries.length) return console.log('nobody yet — the first operator to connect is adopted')
+    for (const e of entries) console.log(e.kind.padEnd(9) + ' ' + e.key + '  ' + e.name)
+  }
+)
+
+const trust = command(
+  'trust',
+  summary('trust an operator identity, or a subsystem'),
+  description('Takes an IDENTITY for an operator, which covers every machine that person has.'),
+  arg('<key>', '64-hex identity (operator) or device key (subsystem)'),
+  arg('[name]', 'a label for the roster'),
+  flag('--subsystem', 'trust a subsystem device key instead of an operator identity'),
+  flag('--dir [path]', 'where the state lives'),
+  (cmd) => {
+    const { Roster } = require('./lib/roster.js')
+    const key = cmd.args.key.trim().toLowerCase()
+    if (!/^[0-9a-f]{64}$/.test(key)) throw new Error('a key is 64 hex characters')
+    const file = path.join(resolveDir(cmd.flags.dir), 'roster.txt')
+    const kind = cmd.flags.subsystem ? 'subsystem' : 'operator'
+    new Roster(file).adopt(key, kind, cmd.args.name || '')
+    console.log('trusted ' + kind + ' ' + key.slice(0, 12) + '…')
+  }
+)
+
+const revoke = command(
+  'revoke',
+  summary('remove an operator identity or subsystem from the roster'),
+  description('Revoking an operator identity locks out every machine that identity has attested.'),
+  arg('<key>', 'the 64-hex key to remove'),
+  flag('--dir [path]', 'where the state lives'),
+  (cmd) => {
+    const { Roster } = require('./lib/roster.js')
+    const key = cmd.args.key.trim().toLowerCase()
+    const file = path.join(resolveDir(cmd.flags.dir), 'roster.txt')
+    const r = new Roster(file)
+    if (!r.get(key)) return console.log('not in the roster: ' + key.slice(0, 12) + '…')
+    r.revoke(key)
+    console.log('revoked ' + key.slice(0, 12) + '… — effective on their next connection')
+  }
+)
+
 // paparam throws a raw Bail otherwise, which reads like a crash for what is usually a typo.
 function onBail(b) {
   if (b.err) console.error('mcp: ' + b.err.message)
@@ -281,6 +394,11 @@ const mcp = command(
   attestCmd,
   proofCmd,
   room,
+  login,
+  whoami,
+  roster,
+  trust,
+  revoke,
   install,
   uninstall,
   (cmd) => consoleOrHost(cmd.flags)

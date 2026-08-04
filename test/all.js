@@ -60,9 +60,14 @@ async function fleet(t, { privateRoom = false, attested = true } = {}) {
     return { ipc, link }
   }
 
-  const addOperator = async () => {
+  // `words` joins this machine to an existing operator identity, the way a second laptop would.
+  const addOperator = async ({ words } = {}) => {
     const dir = path.join(root, 'op' + made.length)
     fs.mkdirSync(dir, { recursive: true })
+    if (words) {
+      const kp = loadOrCreateKeyPair(path.join(dir, '.identity'))
+      fs.writeFileSync(path.join(dir, '.proof'), await attest.attest(words, kp.publicKey))
+    }
     const c = new Client({ dir, mcpKey: mcp.pubkey, bootstrap, onLog: () => {} })
     await c.start()
     made.push(c)
@@ -243,4 +248,80 @@ test('an unattested mcp never gets a subsystem to attach', async function (t) {
   const rec = mcp.subsystems.get(link.identity())
   if (rec) t.absent(rec.appId, 'and disclosed no manifest')
   else t.pass('the mcp saw no subsystem at all')
+})
+
+// The reason operators are identities and not machines.
+test('a second machine joins an operator identity with no roster edit', async function (t) {
+  const { mcp, addOperator } = await fleet(t)
+
+  const laptop = await addOperator()
+  await until(() => laptop.role === 'admin')
+  t.is(laptop.role, 'admin', 'the first operator identity is adopted')
+
+  const words = b4a.toString(fs.readFileSync(path.join(laptop.dir, 'words.txt')), 'utf8').trim()
+  t.ok(words.split(' ').length === 24, 'the console saved words for a second machine')
+
+  const before = mcp.roster.list('operator').length
+
+  const phone = await addOperator({ words })
+  await until(() => phone.role === 'admin')
+  t.is(phone.role, 'admin', 'the second machine is admin immediately')
+  t.is(mcp.roster.list('operator').length, before, 'and the roster did not grow')
+  t.is(
+    phone.identityKey && b4a.toString(phone.identityKey, 'hex'),
+    b4a.toString(laptop.identityKey, 'hex'),
+    'both machines report one identity'
+  )
+
+  // Different machines, one person.
+  t.not(phone.pubkey, laptop.pubkey, 'they are genuinely different device keys')
+})
+
+test('revoking an operator identity locks out every machine it has', async function (t) {
+  const { mcp, addOperator } = await fleet(t)
+  const laptop = await addOperator()
+  await until(() => laptop.role === 'admin')
+  const words = b4a.toString(fs.readFileSync(path.join(laptop.dir, 'words.txt')), 'utf8').trim()
+
+  const identityHex = b4a.toString(laptop.identityKey, 'hex')
+  mcp.roster.revoke(identityHex)
+  t.absent(mcp.roster.get(identityHex), 'one line removed')
+
+  // A brand new machine on that identity is now pending, not admin. The roster is not empty (the
+  // subsystem-free fleet still has no operators, so guard against auto-adopt by adding a decoy).
+  mcp.roster.adopt('a'.repeat(64), 'operator', 'someone else')
+  const replacement = await addOperator({ words })
+  await until(() => replacement.role !== 'connecting')
+  t.is(replacement.role, 'pending', 'the revoked identity gets nothing on any machine')
+})
+
+test('an operator attestation naming another machine is refused', async function (t) {
+  const { mcp, addOperator } = await fleet(t)
+  const laptop = await addOperator()
+  await until(() => laptop.role === 'admin')
+
+  // Steal the adopted operator's proof and present it from a different keypair.
+  const stolen = fs.readFileSync(path.join(laptop.dir, '.proof'))
+  const dir = path.join(path.dirname(laptop.dir), 'thief')
+  fs.mkdirSync(dir, { recursive: true })
+  loadOrCreateKeyPair(path.join(dir, '.identity'))
+  fs.writeFileSync(path.join(dir, '.proof'), stolen)
+
+  const thief = new Client({
+    dir,
+    mcpKey: mcp.pubkey,
+    bootstrap: laptop.bootstrap,
+    onLog: () => {}
+  })
+  await thief.start()
+  t.teardown(() => thief.close())
+
+  // Assert the refusal actually fired, or this test would pass simply by never connecting.
+  await until(() => mcp.logLines.some((l) => l.includes('does not name this peer')))
+  t.ok(
+    mcp.logLines.some((l) => l.includes('does not name this peer')),
+    'the mcp refused the replayed proof'
+  )
+  t.not(thief.role, 'admin', 'and it never became an admin')
+  t.absent(thief.connected, 'the connection was dropped')
 })

@@ -101,22 +101,49 @@ can be revoked; a stolen mnemonic cannot, short of reflashing every card.
 
 ## Adding and removing operators
 
-Everyone is a peer with a keypair; the MCP's `roster.txt` decides what that buys.
-
-- The **first** operator to connect to an empty roster becomes admin, so there is always a way in.
-- Anyone else arrives as **pending**: they see the whole fleet live, and can command nothing.
-- An admin adopts them, or edits `roster.txt` by hand. Revoking is deleting a line — immediate, with
-  nothing to reflash.
-
-Subsystems work the same way. A new one shows as `?` and its reported state is displayed but never
-trusted until an admin presses **A**. That is what stops anyone who can reach the MCP from inventing
-a device.
+An operator is an **identity**, not a machine, so `roster.txt` holds one line per _person_.
 
 ```
 operator  7e0e33db…  alice
 operator  3f10ba22…  bob (evenings)
 subsystem 9be0b0f9…  front desk
 ```
+
+- The **first** operator identity to connect to an empty roster becomes admin, so there is always a
+  way in.
+- Anyone else arrives as **pending**: they see the whole fleet live, and can command nothing.
+- Adopting and revoking are one line, from the console or the CLI.
+
+```sh
+mcp roster                       # who is trusted
+mcp trust <identity> "alice"     # an operator identity — covers every machine she has
+mcp revoke <identity>            # locks out all of them at once
+mcp trust <key> --subsystem      # a device key, for a prop
+```
+
+The roster is re-read on every connection, so an edit — by CLI or by hand — takes effect on the next
+one. No restart.
+
+### A second machine
+
+The console mints an operator identity on first run and saves the words next to its state. Adding a
+laptop or a phone means attesting it to those same words:
+
+```sh
+mcp login --words=words.txt      # on the new machine
+mcp whoami                       # identity, and this machine's key
+```
+
+That machine is admin immediately, because the roster already trusts the identity. **No roster edit,
+no adoption step.** Conversely, revoking the person's single line locks out every machine at once —
+which is exactly what you want when a laptop walks off.
+
+An operator proves which identity is on the connection, and the proof must name **that** connection's
+key. A copied proof presented from a different machine buys nothing.
+
+Subsystems are still trusted by device key: a prop is one box doing one job, and there is nothing for
+an identity to span. A new one shows as `?` and its state is displayed but never trusted until an
+admin presses **A**.
 
 ## Keep these
 
