@@ -9,6 +9,7 @@ const { roomKey } = room
 const { loadOrCreateKeyPair } = identity
 const { MCP } = require('../lib/mcp.js')
 const { Client } = require('../lib/client.js')
+const { LocalController } = require('../lib/local.js')
 const { Roster } = require('../lib/roster.js')
 
 // Real peers on a local DHT — no mocks, and no waiting on the public network.
@@ -53,6 +54,7 @@ async function fleet(t, { privateRoom = false, attested = true } = {}) {
       storeDir: path.join(dir, '.identity'),
       receiptFile: path.join(dir, '.receipt'),
       bootstrap,
+      uiPort: opts.uiPort,
       log: () => {}
     })
     link.open()
@@ -128,6 +130,22 @@ test('an mcp discovers a subsystem and reads its manifest', async function (t) {
   t.absent(rec.adopted, 'unknown subsystems arrive un-adopted')
 })
 
+test('a subsystem reports the port its screen is served on', async function (t) {
+  const { mcp, addSubsystem } = await fleet(t)
+  await addSubsystem(counter, { uiPort: 9080 })
+
+  const rec = await until(() => [...mcp.subsystems.values()].find((r) => r.caps && r.caps.id))
+  t.is(rec.caps.uiPort, 9080, 'the console knows where to tunnel')
+})
+
+test('a headless subsystem reports no port at all', async function (t) {
+  const { mcp, addSubsystem } = await fleet(t)
+  await addSubsystem(counter)
+
+  const rec = await until(() => [...mcp.subsystems.values()].find((r) => r.caps && r.caps.id))
+  t.is(rec.caps.uiPort, 0, 'nothing for the console to offer')
+})
+
 test('an un-adopted subsystem cannot be commanded, an adopted one can', async function (t) {
   const { mcp, addSubsystem, addOperator } = await fleet(t)
   await addSubsystem(counter)
@@ -153,6 +171,20 @@ test('an un-adopted subsystem cannot be commanded, an adopted one can', async fu
   const n = await until(() => (op.subsystems.get(key).state || {}).n)
   t.is(n, 1, 'the command lands once adopted')
   t.ok(mcp.roster.has(key, 'subsystem'), 'adoption is persisted to the roster')
+})
+
+test('a hosting console commands a subsystem the same as a remote one', async function (t) {
+  const { mcp, addSubsystem } = await fleet(t)
+  await addSubsystem(counter)
+
+  const key = await until(() => [...mcp.subsystems.keys()][0])
+  const local = new LocalController(mcp)
+  local.adopt(key, true)
+  await until(() => mcp.subsystems.get(key).adopted)
+  local.command(key, 'bump', {})
+
+  const n = await until(() => (mcp.subsystems.get(key).state || {}).n)
+  t.is(n, 1, 'a no-arg command from the box hosting the fleet lands')
 })
 
 test('a second operator watches but cannot command until adopted', async function (t) {
