@@ -363,10 +363,18 @@ const revoke = command(
   }
 )
 
+// A fault rather than a usage mistake. The help hint would be misleading — nothing the operator
+// typed caused this — and the stack is the only thing that locates it.
+function onError(err) {
+  console.error('mcp: ' + (err.message || err))
+  if (err.stack) console.error(err.stack)
+  Bare.exit(1)
+}
+
 // paparam throws a raw Bail otherwise, which reads like a crash for what is usually a typo.
 function onBail(b) {
-  if (b.err) console.error('mcp: ' + b.err.message)
-  else if (b.reason === 'UNKNOWN_FLAG') console.error('mcp: unknown flag --' + b.flag.name)
+  if (b.err) return onError(b.err)
+  if (b.reason === 'UNKNOWN_FLAG') console.error('mcp: unknown flag --' + b.flag.name)
   else if (b.reason === 'UNKNOWN_ARG') console.error('mcp: unknown command or argument')
   else if (b.reason === 'MISSING_ARG') console.error('mcp: missing argument')
   else console.error('mcp: ' + b.reason)
@@ -406,8 +414,5 @@ const mcp = command(
 
 const parsed = mcp.parse(Bare.argv.slice(2))
 if (parsed && parsed.running) {
-  parsed.running.catch((e) => {
-    console.error('[mcp] ' + (e && e.message ? e.message : e))
-    Bare.exit(1)
-  })
+  parsed.running.catch(onError)
 }
