@@ -84,7 +84,7 @@ async function fleet(t, { privateRoom = false, attested = true } = {}) {
     } catch {}
   })
 
-  return { mcp, identityKey, mnemonic, device, addSubsystem, addOperator }
+  return { mcp, mcpDir, bootstrap, identityKey, mnemonic, device, addSubsystem, addOperator }
 }
 
 const until = async (fn, ms = 20000) => {
@@ -185,6 +185,26 @@ test('a hosting console commands a subsystem the same as a remote one', async fu
 
   const n = await until(() => (mcp.subsystems.get(key).state || {}).n)
   t.is(n, 1, 'a no-arg command from the box hosting the fleet lands')
+})
+
+// A prop never announces, so it cannot be found — it does the finding. That is fine when the prop
+// is the one that boots late, which is the case the MCP's own announce covers. This is the other
+// direction: the console restarts under a prop that never went anywhere.
+test('a prop reattaches to a console that restarts', async function (t) {
+  const { mcp, mcpDir, bootstrap, addSubsystem } = await fleet(t)
+  await addSubsystem(counter)
+
+  t.ok(await until(() => [...mcp.subsystems.keys()][0]), 'attached to the first console')
+  await mcp.close()
+
+  const next = new MCP({ dir: mcpDir, bootstrap, lockPort: 0, onLog: () => {} })
+  await next.start()
+  t.teardown(() => next.close())
+
+  const started = Date.now()
+  const back = await until(() => [...next.subsystems.keys()][0], 120000)
+  t.ok(back, 'the prop found the replacement console')
+  t.comment('reattached in ' + ((Date.now() - started) / 1000).toFixed(1) + 's')
 })
 
 test('a second operator watches but cannot command until adopted', async function (t) {
