@@ -38,7 +38,9 @@ function readKey(dir, name) {
 async function runTUI(controller) {
   const { Program } = require('bare-tui')
   const { ConsoleModel } = require('./lib/tui.js')
-  await new Program(new ConsoleModel(controller)).run()
+  // Mouse on, for the wheel to scroll the log. Selecting text then needs the terminal's modifier —
+  // option-drag in Terminal and iTerm2, shift-drag in most others.
+  await new Program(new ConsoleModel(controller), { mouse: true }).run()
 }
 
 async function attach(dir, host) {
