@@ -38,9 +38,15 @@ function readKey(dir, name) {
 async function runTUI(controller) {
   const { Program } = require('bare-tui')
   const { ConsoleModel } = require('./lib/tui.js')
-  // Mouse on, for the wheel to scroll the log. Selecting text then needs the terminal's modifier —
-  // option-drag in Terminal and iTerm2, shift-drag in most others.
-  await new Program(new ConsoleModel(controller), { mouse: true }).run()
+  // Mouse on, for the wheel to scroll the log. That takes plain dragging away from the terminal,
+  // and the modifier that gets it back differs per terminal — some have none by default — so S in
+  // the console hands the mouse back to select text, and takes it again. bare-tui has no switch for
+  // this mid-run; these are the same two modes it sets: reporting (1000), SGR encoding (1006).
+  const model = new ConsoleModel(controller)
+  const program = new Program(model, { mouse: true })
+  model.onMouse = (on) =>
+    program.output.write(on ? '\x1b[?1000h\x1b[?1006h' : '\x1b[?1006l\x1b[?1000l')
+  await program.run()
 }
 
 async function attach(dir, host) {
