@@ -2,7 +2,7 @@
   "name": "master-control",
   "version": "0.2.0",
   "description": "Operator console for a room of subsystems — watch them all, drive any of them, from manifests alone",
-  "main": "index.js",
+  "main": "lib/index.js",
   "bin": {
     "mcp": "index.js",
     "master-control": "index.js"

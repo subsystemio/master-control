@@ -377,3 +377,67 @@ test('an operator attestation naming another machine is refused', async function
   t.not(thief.role, 'admin', 'and it never became an admin')
   t.absent(thief.connected, 'the connection was dropped')
 })
+
+test('a result comes back under the id its operator sent, not the mcp’s own', async function (t) {
+  const { mcp, addSubsystem, addOperator } = await fleet(t)
+  await addSubsystem(counter)
+  const op = await addOperator()
+  await until(() => op.admin)
+  const key = await until(() => [...op.subsystems.keys()][0])
+  op.adopt(key, true)
+  await until(() => op.subsystems.get(key).adopted)
+
+  // The hosting console goes first, so the mcp's counter is ahead of this operator's. Matching ids
+  // used to be luck: both counters started at 1.
+  new LocalController(mcp).command(key, 'bump', {})
+  await until(() => (mcp.subsystems.get(key).state || {}).n === 1)
+
+  const id = op.command(key, 'bump', {})
+  const line = await until(() => op.logLines.find((l) => l.includes('result #')))
+  t.is(id, 1, "the operator's first command")
+  t.ok(line && line.includes('result #1 (bump) ok=true: 2'), line)
+})
+
+test('an operator who connects late sees state that has not changed since', async function (t) {
+  const { mcp, addSubsystem, addOperator } = await fleet(t)
+  await addSubsystem(counter)
+  const key = await until(() => {
+    const rec = [...mcp.subsystems.values()][0]
+    return rec && rec.state && rec.key
+  })
+
+  // Nothing on the prop changes from here on: whatever this operator sees, it got on arrival.
+  const op = await addOperator()
+  const state = await until(() => op.subsystems.get(key) && op.subsystems.get(key).state, 10000)
+  t.alike(state, { done: false, n: 0 }, 'the last report, not a blank panel')
+})
+
+test('a phone mints its own identity, waits pending, and an admin approves it live', async function (t) {
+  const { addSubsystem, addOperator } = await fleet(t)
+  await addSubsystem(counter)
+  const laptop = await addOperator()
+  await until(() => laptop.admin)
+  const prop = await until(() => [...laptop.subsystems.keys()][0])
+  laptop.adopt(prop, true)
+  await until(() => laptop.subsystems.get(prop).adopted)
+
+  // No words copied anywhere: the phone is a stranger with an identity of its own.
+  const phone = await addOperator()
+  await until(() => phone.role === 'pending')
+  const phoneKey = b4a.toString(phone.identityKey, 'hex')
+  const seen = await until(() => laptop.operators.get(phoneKey))
+  t.is(seen && seen.role, 'pending', 'the admin sees the phone waiting')
+  t.is(phone.operators.size, 0, 'a pending operator is not told who else is here')
+
+  laptop.adopt(phoneKey, true)
+  await until(() => phone.admin)
+  t.ok(phone.admin, 'approved on the same connection, no reconnect')
+  t.is((await until(() => laptop.operators.get(phoneKey).role === 'admin')) && 'admin', 'admin')
+
+  phone.command(prop, 'bump', {})
+  t.is(await until(() => (phone.subsystems.get(prop).state || {}).n), 1, 'and can command')
+
+  laptop.adopt(phoneKey, false)
+  await until(() => phone.role === 'pending')
+  t.is(phone.role, 'pending', 'revoked just as fast')
+})

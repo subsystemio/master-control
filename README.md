@@ -112,7 +112,9 @@ subsystem 9be0b0f9…  front desk
 - The **first** operator identity to connect to an empty roster becomes admin, so there is always a
   way in.
 - Anyone else arrives as **pending**: they see the whole fleet live, and can command nothing.
-- Adopting and revoking are one line, from the console or the CLI.
+- An admin's console lists every operator under the props. **A** approves a pending one, or revokes
+  an approved one, on the live connection: the device learns its new role at once.
+- Or from the CLI, as one line.
 
 ```sh
 mcp roster                       # who is trusted
@@ -124,10 +126,16 @@ mcp trust <key> --subsystem      # a device key, for a prop
 The roster is re-read on every connection, so an edit — by CLI or by hand — takes effect on the next
 one. No restart.
 
-### A second machine
+### A staff phone
 
-The console mints an operator identity on first run and saves the words next to its state. Adding a
-laptop or a phone means attesting it to those same words:
+Don't copy words onto it. A phone — or any new client — mints an identity of its own on first run
+and connects as pending. It shows up in an admin's console with a `?`; select it and press **A**.
+One identity per phone, so a lost one is one revoke and nobody else's access changes.
+
+### A second machine for the same person
+
+The console mints an operator identity on first run and saves the words next to its state. Giving
+the same person another laptop means attesting it to those same words:
 
 ```sh
 mcp login --words=words.txt      # on the new machine
@@ -184,6 +192,25 @@ would die at logout and never come back on a headless box. `uninstall` removes t
 the identity alone.
 
 Linux only — everywhere else, just run `mcp`.
+
+## As a library
+
+An app can be an operator with the same client the console runs on:
+
+```js
+const { Client } = require('master-control')
+
+const op = new Client({ dir: './operator', mcpKey, onChange: () => draw(op) })
+await op.start() // mints this device's own identity on first run, then connects — pending until approved
+
+op.subsystems // Map: key -> { tag, appId, adopted, online, caps, state } — state arrives on connect
+op.admin // true once an admin approves this identity
+op.command(key, 'reset', {}) // the result comes back under the id this returns
+op.operators // admins only: Map of identities, pending ones included
+op.adopt(identityKey) // approve one (false to revoke)
+```
+
+`MCP` and `LocalController` are exported too, for hosting a fleet in-process.
 
 ## Running it
 
