@@ -336,15 +336,17 @@ const trust = command(
   arg('<key>', '64-hex identity (operator) or device key (subsystem)'),
   arg('[name]', 'a label for the roster'),
   flag('--subsystem', 'trust a subsystem device key instead of an operator identity'),
+  flag('--user', 'commands only — not approving operators or adopting subsystems'),
   flag('--dir [path]', 'where the state lives'),
   (cmd) => {
     const { Roster } = require('./lib/roster.js')
     const key = cmd.args.key.trim().toLowerCase()
     if (!/^[0-9a-f]{64}$/.test(key)) throw new Error('a key is 64 hex characters')
     const file = path.join(resolveDir(cmd.flags.dir), 'roster.txt')
-    const kind = cmd.flags.subsystem ? 'subsystem' : 'operator'
+    const kind = cmd.flags.subsystem ? 'subsystem' : cmd.flags.user ? 'user' : 'operator'
     new Roster(file).adopt(key, kind, cmd.args.name || '')
-    console.log('trusted ' + kind + ' ' + key.slice(0, 12) + '…')
+    const as = { operator: 'operator (admin)', user: 'operator (user)', subsystem: 'subsystem' }
+    console.log('trusted ' + as[kind] + ' ' + key.slice(0, 12) + '…')
   }
 )
 

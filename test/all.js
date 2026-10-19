@@ -441,3 +441,47 @@ test('a phone mints its own identity, waits pending, and an admin approves it li
   await until(() => phone.role === 'pending')
   t.is(phone.role, 'pending', 'revoked just as fast')
 })
+
+test('a user commands, but decides nothing about trust — until an admin promotes it', async function (t) {
+  const { mcp, addSubsystem, addOperator } = await fleet(t)
+  await addSubsystem(counter)
+  const laptop = await addOperator()
+  await until(() => laptop.admin)
+  const prop = await until(() => [...laptop.subsystems.keys()][0])
+  laptop.adopt(prop, true)
+  await until(() => laptop.subsystems.get(prop).adopted)
+
+  const phone = await addOperator()
+  await until(() => phone.role === 'pending')
+  const phoneKey = b4a.toString(phone.identityKey, 'hex')
+  await until(() => laptop.operators.get(phoneKey))
+
+  laptop.setRole(phoneKey, 'user')
+  await until(() => phone.role === 'user')
+  t.is(phone.role, 'user', 'approved as a user, live')
+  t.ok(mcp.roster.has(phoneKey, 'user'), 'written to the roster as a user')
+
+  phone.command(prop, 'bump', {})
+  t.is(await until(() => (phone.subsystems.get(prop).state || {}).n), 1, 'a user runs commands')
+
+  // What a user may NOT do. Its client refuses locally, so go round it, the way a modified one would.
+  phone.channels.sendAdopt({ key: b4a.from(prop, 'hex'), adopt: false })
+  phone.channels.sendRole({ key: b4a.from('d'.repeat(64), 'hex'), role: 'admin' })
+  await new Promise((r) => setTimeout(r, 500))
+  t.ok(mcp.subsystems.get(prop).adopted, 'a user cannot un-adopt a prop')
+  t.absent(mcp.roster.has('d'.repeat(64)), 'a user cannot make anyone an admin')
+  t.is(phone.operators.size, 0, 'a user is not told who else is here')
+
+  laptop.setRole(phoneKey, 'admin')
+  await until(() => phone.admin)
+  t.ok(mcp.roster.has(phoneKey, 'operator'), 'promoted: an operator line, as admins always were')
+  t.ok(await until(() => phone.operators.size > 0), 'an admin hears about every operator at once')
+})
+
+test('a roster of only users is not empty: a stranger does not become its admin', async function (t) {
+  const { mcp, addOperator } = await fleet(t)
+  mcp.roster.adopt('e'.repeat(64), 'user', 'someone')
+  const stranger = await addOperator()
+  await until(() => stranger.role !== 'connecting')
+  t.is(stranger.role, 'pending')
+})

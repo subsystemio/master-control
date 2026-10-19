@@ -105,20 +105,24 @@ An operator is an **identity**, not a machine, so `roster.txt` holds one line pe
 
 ```
 operator  7e0e33db…  alice
-operator  3f10ba22…  bob (evenings)
+user      3f10ba22…  bob (evenings)
 subsystem 9be0b0f9…  front desk
 ```
 
 - The **first** operator identity to connect to an empty roster becomes admin, so there is always a
   way in.
 - Anyone else arrives as **pending**: they see the whole fleet live, and can command nothing.
-- An admin's console lists every operator under the props. **A** approves a pending one, or revokes
-  an approved one, on the live connection: the device learns its new role at once.
+- An approved identity is a **user** or an **admin**. Both run commands. Only an admin decides who
+  is trusted: adopting subsystems, approving operators, setting roles.
+- An admin's console lists every operator under the props. **A** approves a pending one as a user,
+  or revokes; **M** makes a user an admin or an admin a user. It takes effect on the live
+  connection: the device learns its new role at once. Never on your own row.
 - Or from the CLI, as one line.
 
 ```sh
 mcp roster                       # who is trusted
-mcp trust <identity> "alice"     # an operator identity — covers every machine she has
+mcp trust <identity> "alice"     # an admin identity — covers every machine she has
+mcp trust <identity> --user      # commands only
 mcp revoke <identity>            # locks out all of them at once
 mcp trust <key> --subsystem      # a device key, for a prop
 ```
@@ -126,11 +130,12 @@ mcp trust <key> --subsystem      # a device key, for a prop
 The roster is re-read on every connection, so an edit — by CLI or by hand — takes effect on the next
 one. No restart.
 
-### A staff phone
+### A phone
 
 Don't copy words onto it. A phone — or any new client — mints an identity of its own on first run
 and connects as pending. It shows up in an admin's console with a `?`; select it and press **A**.
-One identity per phone, so a lost one is one revoke and nobody else's access changes.
+It comes in as a **user** — commands, not trust. One identity per phone, so a lost one is one
+revoke and nobody else's access changes.
 
 ### A second machine for the same person
 
@@ -204,10 +209,11 @@ const op = new Client({ dir: './operator', mcpKey, onChange: () => draw(op) })
 await op.start() // mints this device's own identity on first run, then connects — pending until approved
 
 op.subsystems // Map: key -> { tag, appId, adopted, online, caps, state } — state arrives on connect
-op.admin // true once an admin approves this identity
+op.role // 'pending', then 'user' or 'admin' once approved
+op.canCommand // true for a user or an admin
 op.command(key, 'reset', {}) // the result comes back under the id this returns
 op.operators // admins only: Map of identities, pending ones included
-op.adopt(identityKey) // approve one (false to revoke)
+op.setRole(identityKey, 'user') // approve one — 'admin' to promote, 'pending' to revoke
 ```
 
 `MCP` and `LocalController` are exported too, for hosting a fleet in-process.
